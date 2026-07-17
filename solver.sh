@@ -1,11 +1,6 @@
 #!/bin/bash
 
 # Terraform Challenge Lab Solver - FULLY AUTOMATIC
-# Project: qwiklabs-gcp-02-e9ef3f99ca82
-# Bucket: tf-bucket-159100
-# Instance: tf-instance-818696
-# VPC: tf-vpc-984625
-
 set -e
 
 PROJECT_ID="qwiklabs-gcp-02-e9ef3f99ca82"
@@ -17,26 +12,29 @@ ZONE="us-central1-a"
 
 echo "=========================================="
 echo "   Terraform Challenge Lab Solver"
-echo "   Auto-solving all 7 tasks..."
 echo "=========================================="
 
-# ==================== TASK 1 ====================
-echo ""
-echo ">>> TASK 1: Create Configuration Files"
-
 cd ~
-rm -rf modules terraform.tf* variables.tf main.tf .terraform terraform.tfstate* 2>/dev/null || true
+rm -rf modules terraform.tf* variables.tf main.tf instances.tf storage.tf .terraform terraform.tfstate* 2>/dev/null || true
 mkdir -p modules/instances modules/storage
+
+# ==================== TASK 1 ====================
+echo ">>> TASK 1: Create files + Import instances"
 
 cat > variables.tf <<EOF
 variable "region" {
-  default = "$REGION"
+  description = "The region to deploy resources"
+  default     = "$REGION"
 }
+
 variable "zone" {
-  default = "$ZONE"
+  description = "The zone to deploy resources"
+  default     = "$ZONE"
 }
+
 variable "project_id" {
-  default = "$PROJECT_ID"
+  description = "The project ID"
+  default     = "$PROJECT_ID"
 }
 EOF
 
@@ -81,17 +79,21 @@ resource "google_compute_instance" "tf-instance-1" {
   name         = "tf-instance-1"
   machine_type = "e2-medium"
   zone         = var.zone
+
   boot_disk {
     initialize_params {
       image = "debian-cloud/debian-11"
     }
   }
+
   network_interface {
     network = "default"
   }
+
   metadata_startup_script = <<-EOT
         #!/bin/bash
     EOT
+
   allow_stopping_for_update = true
 }
 
@@ -99,17 +101,21 @@ resource "google_compute_instance" "tf-instance-2" {
   name         = "tf-instance-2"
   machine_type = "e2-medium"
   zone         = var.zone
+
   boot_disk {
     initialize_params {
       image = "debian-cloud/debian-11"
     }
   }
+
   network_interface {
     network = "default"
   }
+
   metadata_startup_script = <<-EOT
         #!/bin/bash
     EOT
+
   allow_stopping_for_update = true
 }
 EOF
@@ -118,6 +124,7 @@ cat > modules/instances/outputs.tf <<EOF
 output "instance_1_name" {
   value = google_compute_instance.tf-instance-1.name
 }
+
 output "instance_2_name" {
   value = google_compute_instance.tf-instance-2.name
 }
@@ -144,88 +151,51 @@ output "bucket_name" {
 EOF
 
 terraform init
+
+# Import instances
+INSTANCE_ID_1=$(gcloud compute instances describe tf-instance-1 --zone=$ZONE --project=$PROJECT_ID --format="value(id)" 2>/dev/null)
+INSTANCE_ID_2=$(gcloud compute instances describe tf-instance-2 --zone=$ZONE --project=$PROJECT_ID --format="value(id)" 2>/dev/null)
+
+echo "Importing instance 1: $INSTANCE_ID_1"
+terraform import module.instances.google_compute_instance.tf-instance-1 $INSTANCE_ID_1
+
+echo "Importing instance 2: $INSTANCE_ID_2"
+terraform import module.instances.google_compute_instance.tf-instance-2 $INSTANCE_ID_2
+
+terraform apply -auto-approve
 echo "TASK 1 DONE"
 
 # ==================== TASK 2 ====================
 echo ""
-echo ">>> TASK 2: Import Infrastructure"
-
-INSTANCE_ID_1=$(gcloud compute instances describe tf-instance-1 --zone=$ZONE --project=$PROJECT_ID --format="value(id)" 2>/dev/null || echo "")
-INSTANCE_ID_2=$(gcloud compute instances describe tf-instance-2 --zone=$ZONE --project=$PROJECT_ID --format="value(id)" 2>/dev/null || echo "")
-
-echo "Instance 1 ID: $INSTANCE_ID_1"
-echo "Instance 2 ID: $INSTANCE_ID_2"
-
-terraform import module.instances.google_compute_instance.tf-instance-1 $INSTANCE_ID_1
-terraform import module.instances.google_compute_instance.tf-instance-2 $INSTANCE_ID_2
+echo ">>> TASK 2: Configure storage bucket"
 
 terraform apply -auto-approve
 echo "TASK 2 DONE"
 
 # ==================== TASK 3 ====================
 echo ""
-echo ">>> TASK 3: Configure Remote Backend"
-
-terraform apply -auto-approve
-
-cat > main.tf <<EOF
-terraform {
-  required_providers {
-    google = {
-      source  = "hashicorp/google"
-      version = "~> 5.0"
-    }
-  }
-  backend "gcs" {
-    bucket  = "$BUCKET_NAME"
-    prefix  = "terraform/state"
-  }
-}
-
-provider "google" {
-  project = var.project_id
-  region  = var.region
-  zone    = var.zone
-}
-
-module "instances" {
-  source     = "./modules/instances"
-  region     = var.region
-  zone       = var.zone
-  project_id = var.project_id
-}
-
-module "storage" {
-  source     = "./modules/storage"
-  region     = var.region
-  project_id = var.project_id
-}
-EOF
-
-terraform init -migrate-state <<< "yes"
-terraform apply -auto-approve
-echo "TASK 3 DONE"
-
-# ==================== TASK 4 ====================
-echo ""
-echo ">>> TASK 4: Modify and Update Infrastructure"
+echo ">>> TASK 3: Update machine types"
 
 cat > modules/instances/instances.tf <<EOF
 resource "google_compute_instance" "tf-instance-1" {
   name         = "tf-instance-1"
   machine_type = "e2-standard-2"
   zone         = var.zone
+
   boot_disk {
     initialize_params {
       image = "debian-cloud/debian-11"
     }
   }
+
   network_interface {
     network = "default"
   }
+
   metadata_startup_script = <<-EOT
         #!/bin/bash
     EOT
+
   allow_stopping_for_update = true
 }
 
@@ -233,17 +203,74 @@ resource "google_compute_instance" "tf-instance-2" {
   name         = "tf-instance-2"
   machine_type = "e2-standard-2"
   zone         = var.zone
+
   boot_disk {
     initialize_params {
       image = "debian-cloud/debian-11"
     }
   }
+
   network_interface {
     network = "default"
   }
+
   metadata_startup_script = <<-EOT
         #!/bin/bash
     EOT
+
+  allow_stopping_for_update = true
+}
+EOF
+
+terraform apply -auto-approve
+echo "TASK 3 DONE"
+
+# ==================== TASK 4 ====================
+echo ""
+echo ">>> TASK 4: Add then destroy third instance"
+
+cat > modules/instances/instances.tf <<EOF
+resource "google_compute_instance" "tf-instance-1" {
+  name         = "tf-instance-1"
+  machine_type = "e2-standard-2"
+  zone         = var.zone
+
+  boot_disk {
+    initialize_params {
+      image = "debian-cloud/debian-11"
+    }
+  }
+
+  network_interface {
+    network = "default"
+  }
+
+  metadata_startup_script = <<-EOT
+        #!/bin/bash
+    EOT
+
+  allow_stopping_for_update = true
+}
+
+resource "google_compute_instance" "tf-instance-2" {
+  name         = "tf-instance-2"
+  machine_type = "e2-standard-2"
+  zone         = var.zone
+
+  boot_disk {
+    initialize_params {
+      image = "debian-cloud/debian-11"
+    }
+  }
+
+  network_interface {
+    network = "default"
+  }
+
+  metadata_startup_script = <<-EOT
+        #!/bin/bash
+    EOT
+
   allow_stopping_for_update = true
 }
 
@@ -251,17 +278,70 @@ resource "google_compute_instance" "tf-instance-3" {
   name         = "$INSTANCE_NAME"
   machine_type = "e2-standard-2"
   zone         = var.zone
+
   boot_disk {
     initialize_params {
       image = "debian-cloud/debian-11"
     }
   }
+
   network_interface {
     network = "default"
   }
+
   metadata_startup_script = <<-EOT
         #!/bin/bash
     EOT
+
+  allow_stopping_for_update = true
+}
+EOF
+
+terraform apply -auto-approve
+
+# Now remove it
+cat > modules/instances/instances.tf <<EOF
+resource "google_compute_instance" "tf-instance-1" {
+  name         = "tf-instance-1"
+  machine_type = "e2-standard-2"
+  zone         = var.zone
+
+  boot_disk {
+    initialize_params {
+      image = "debian-cloud/debian-11"
+    }
+  }
+
+  network_interface {
+    network = "default"
+  }
+
+  metadata_startup_script = <<-EOT
+        #!/bin/bash
+    EOT
+
+  allow_stopping_for_update = true
+}
+
+resource "google_compute_instance" "tf-instance-2" {
+  name         = "tf-instance-2"
+  machine_type = "e2-standard-2"
+  zone         = var.zone
+
+  boot_disk {
+    initialize_params {
+      image = "debian-cloud/debian-11"
+    }
+  }
+
+  network_interface {
+    network = "default"
+  }
+
+  metadata_startup_script = <<-EOT
+        #!/bin/bash
+    EOT
+
   allow_stopping_for_update = true
 }
 EOF
@@ -271,53 +351,7 @@ echo "TASK 4 DONE"
 
 # ==================== TASK 5 ====================
 echo ""
-echo ">>> TASK 5: Destroy Resources"
-
-cat > modules/instances/instances.tf <<EOF
-resource "google_compute_instance" "tf-instance-1" {
-  name         = "tf-instance-1"
-  machine_type = "e2-standard-2"
-  zone         = var.zone
-  boot_disk {
-    initialize_params {
-      image = "debian-cloud/debian-11"
-    }
-  }
-  network_interface {
-    network = "default"
-  }
-  metadata_startup_script = <<-EOT
-        #!/bin/bash
-    EOT
-  allow_stopping_for_update = true
-}
-
-resource "google_compute_instance" "tf-instance-2" {
-  name         = "tf-instance-2"
-  machine_type = "e2-standard-2"
-  zone         = var.zone
-  boot_disk {
-    initialize_params {
-      image = "debian-cloud/debian-11"
-    }
-  }
-  network_interface {
-    network = "default"
-  }
-  metadata_startup_script = <<-EOT
-        #!/bin/bash
-    EOT
-  allow_stopping_for_update = true
-}
-EOF
-
-terraform init
-terraform apply -auto-approve
-echo "TASK 5 DONE"
-
-# ==================== TASK 6 ====================
-echo ""
-echo ">>> TASK 6: Use Module from Registry"
+echo ">>> TASK 5: Add VPC + subnet"
 
 cat > main.tf <<EOF
 terraform {
@@ -375,23 +409,28 @@ module "vpc" {
 }
 EOF
 
+# Also update instances to use the new VPC
 cat > modules/instances/instances.tf <<EOF
 resource "google_compute_instance" "tf-instance-1" {
   name         = "tf-instance-1"
   machine_type = "e2-standard-2"
   zone         = var.zone
+
   boot_disk {
     initialize_params {
       image = "debian-cloud/debian-11"
     }
   }
+
   network_interface {
     network    = "$VPC_NAME"
     subnetwork = "subnet-01"
   }
+
   metadata_startup_script = <<-EOT
         #!/bin/bash
     EOT
+
   allow_stopping_for_update = true
 }
 
@@ -399,29 +438,33 @@ resource "google_compute_instance" "tf-instance-2" {
   name         = "tf-instance-2"
   machine_type = "e2-standard-2"
   zone         = var.zone
+
   boot_disk {
     initialize_params {
       image = "debian-cloud/debian-11"
     }
   }
+
   network_interface {
     network    = "$VPC_NAME"
     subnetwork = "subnet-02"
   }
+
   metadata_startup_script = <<-EOT
         #!/bin/bash
     EOT
+
   allow_stopping_for_update = true
 }
 EOF
 
 terraform init
 terraform apply -auto-approve
-echo "TASK 6 DONE"
+echo "TASK 5 DONE"
 
-# ==================== TASK 7 ====================
+# ==================== TASK 6 ====================
 echo ""
-echo ">>> TASK 7: Configure Firewall"
+echo ">>> TASK 6: Add firewall rule"
 
 cat >> main.tf <<EOF
 
@@ -440,10 +483,10 @@ EOF
 
 terraform init
 terraform apply -auto-approve
-echo "TASK 7 DONE"
+echo "TASK 6 DONE"
 
 echo ""
 echo "=========================================="
-echo "   ALL 7 TASKS COMPLETED!"
+echo "   ALL TASKS COMPLETED!"
 echo "   Click Check my progress for each task"
 echo "=========================================="
